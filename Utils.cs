@@ -11,7 +11,7 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
 
-namespace MiscUtils
+namespace EldenRingTool
 {
     public class Utils
     {
@@ -154,9 +154,9 @@ namespace MiscUtils
                 string dirGuess2 = @"D:\Steam\steamapps\common\ELDEN RING\Game";
                 string dirGuess3 = @"D:\SteamLibrary\steamapps\common\ELDEN RING\Game";
 
-                string pathGuess1 = System.IO.Path.Combine(dirGuess1, exename);
-                string pathGuess2 = System.IO.Path.Combine(dirGuess2, exename);
-                string pathGuess3 = System.IO.Path.Combine(dirGuess3, exename);
+                string pathGuess1 = Path.Combine(dirGuess1, exename);
+                string pathGuess2 = Path.Combine(dirGuess2, exename);
+                string pathGuess3 = Path.Combine(dirGuess3, exename);
 
                 if (File.Exists(path))
                 {
@@ -187,8 +187,8 @@ namespace MiscUtils
                     string filter = exename + "|" + exename;
                     path = promptForFile(null, filter);
                     if (string.IsNullOrEmpty(path)) { return false; }
-                    dir = System.IO.Path.GetDirectoryName(path);
-                    exename = System.IO.Path.GetFileName(path);
+                    dir = Path.GetDirectoryName(path);
+                    exename = Path.GetFileName(path);
                     Utils.debugWrite("Will use selected path " + path);
                 }
                 var psi = new ProcessStartInfo(path);
@@ -228,7 +228,7 @@ namespace MiscUtils
     public class AOBScanner : IDisposable
     {
         [DllImport("ntdll.dll")]
-        static extern int NtReadVirtualMemory(IntPtr ProcessHandle, IntPtr BaseAddress, byte[] Buffer, UInt32 NumberOfBytesToRead, ref UInt32 NumberOfBytesRead);
+        static extern int NtReadVirtualMemory(IntPtr ProcessHandle, IntPtr BaseAddress, byte[] Buffer, uint NumberOfBytesToRead, ref uint NumberOfBytesRead);
 
         public uint textOneSize = 0;
         public int textOneAddr = 0;
@@ -285,7 +285,7 @@ namespace MiscUtils
             byte[] b = new byte[hex.Length >> 1];
             for (int i = 0; i <= b.Length - 1; ++i)
             {
-                b[i] = (byte)((hex[i * 2] - (hex[i * 2] < 58 ? 48 : (hex[i * 2] < 97 ? 55 : 87))) * 16 + (hex[i * 2 + 1] - (hex[i * 2 + 1] < 58 ? 48 : (hex[i * 2 + 1] < 97 ? 55 : 87))));
+                b[i] = (byte)((hex[i * 2] - (hex[i * 2] < 58 ? 48 : hex[i * 2] < 97 ? 55 : 87)) * 16 + (hex[i * 2 + 1] - (hex[i * 2 + 1] < 58 ? 48 : hex[i * 2 + 1] < 97 ? 55 : 87)));
             }
             return b;
         }
@@ -317,7 +317,7 @@ namespace MiscUtils
                 {
                     for (int m = 1; m < find.Length; m++)
                     {
-                        if ((buf[i + m] != find[m]) && (wild[m] != 1)) break;
+                        if (buf[i + m] != find[m] && wild[m] != 1) break;
                         if (m == find.Length - 1) return i;
                     }
                 }

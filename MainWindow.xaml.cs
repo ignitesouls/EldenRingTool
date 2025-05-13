@@ -19,7 +19,6 @@ using System.Runtime.InteropServices;
 using System.Windows.Interop;
 using System.Threading;
 using System.Reflection;
-using MiscUtils;
 
 namespace EldenRingTool
 {
@@ -96,6 +95,8 @@ namespace EldenRingTool
                 return ret;
             }
         }
+
+        private CancellationTokenSource _cancellationTokenSource = new();
 
         ERProcess _process = null;
         private bool disposedValue;
@@ -922,14 +923,14 @@ namespace EldenRingTool
 
         bool inWarp = false;
 
-        void doGlobalTP((float, float, float, float, uint) pos)
+        async Task doGlobalTP((float, float, float, float, uint) pos)
         {//TODO: move this into erprocess
             if (inWarp) { return; } //block trying to warp multiple times at once as this can break the game
             inWarp = true;
             var mapCoordsNow = _process.getMapCoords();
             if (pos.Item5 == mapCoordsNow.Item5)
             {//same map region. don't attempt warp.
-                _process.teleportToGlobal(pos);
+                await _process.teleportToGlobal(pos);
                 inWarp = false;
                 return;
             }
@@ -941,15 +942,15 @@ namespace EldenRingTool
             var noGravState = chkPlayerNoGrav.IsChecked;
             chkPlayerNoGrav.IsChecked = true;
 
-            var t = new Thread(() =>
+            var t = new Thread(async () =>
             {
                 Thread.Sleep(250); //wait for freeze to enable
 
-                var ret = _process.teleportToGlobal(pos, 0.5f, warpIfNeeded: true);
+                var ret = await _process.teleportToGlobal(pos, 0.5f, warpIfNeeded: true);
                 if (ret == 0)
                 {//just ported
                     Thread.Sleep(5000);
-                    _process.teleportToGlobal(pos, 0.5f);
+                    await _process.teleportToGlobal(pos, 0.5f);
                 }
                 else if (ret == 1)
                 {//warped. TODO: identify if we've fully loaded in, or at least mostly.

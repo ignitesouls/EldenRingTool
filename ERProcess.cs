@@ -8,7 +8,6 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using System.Reflection;
 using System.IO;
-using MiscUtils;
 
 namespace EldenRingTool
 {
@@ -19,8 +18,6 @@ namespace EldenRingTool
         private IntPtr _targetProcessHandle = IntPtr.Zero;
         public IntPtr erBase = IntPtr.Zero;
         int erSize = 0;
-
-        protected bool disposed = false;
         
         [DllImport("kernel32.dll")]
         private static extern IntPtr OpenProcess(uint dwDesiredAcess, bool bInheritHandle, int dwProcessId);
@@ -54,28 +51,62 @@ namespace EldenRingTool
             return ret;
         }
 
-        Thread freezeThread = null;
-        bool _running = true;
+        private CancellationTokenSource _cancellationTokenSource = new();
+        private Task? freezeTask;
+        protected bool disposed = false;
+
         public ERProcess()
         {
             findAttach();
             findBaseAddress();
             aobScan();
+            freezeTask = Task.Run(() => FreezeLoopAsync(_cancellationTokenSource.Token));
+        }
 
-            freezeThread = new Thread(() => { freezeFunc(); });
-            freezeThread.Start();
+        private async Task FreezeLoopAsync(CancellationToken token)
+        {
+            try
+            {
+                while (!token.IsCancellationRequested)
+                {
+                    weGood = ReadTest(erBase);
+
+                    lock (setLock)
+                    {
+                        foreach (var opt in unFreezeSet)
+                        {
+                            disableOpt(opt);
+                            freezeSet.Remove(opt);
+                        }
+                        unFreezeSet.Clear();
+
+                        foreach (var opt in freezeSet)
+                        {
+                            enableOpt(opt);
+                        }
+                    }
+
+                    await Task.Delay(100, token);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                // Normal shutdown
+            }
+            catch (Exception ex)
+            {
+                Utils.debugWrite($"Freeze loop error: {ex}");
+            }
         }
 
         public void Dispose()
         {
             if (!disposed)
             {
-                _running = false;
-                if (freezeThread != null)
-                {
-                    freezeThread.Abort();
-                    freezeThread = null;
-                }
+                _cancellationTokenSource.Cancel();
+                freezeTask?.Wait(); // Optional: wait for graceful shutdown
+                freezeTask?.Dispose();
+                _cancellationTokenSource.Dispose();
                 detach();
                 disposed = true;
             }
@@ -1345,28 +1376,6 @@ namespace EldenRingTool
 
         public bool weGood { get; set; } = true;
 
-        void freezeFunc()
-        {//CE style "freeze" that repeatedly sets the value
-            while (_running)
-            {
-                weGood = ReadTest(erBase); //is it possible to come good later, or should we just fail immediately and dispose ourself?
-                lock (setLock)
-                {
-                    foreach (var opt in unFreezeSet)
-                    {
-                        disableOpt(opt);
-                        if (freezeSet.Contains(opt)) { freezeSet.Remove(opt); }
-                    }
-                    unFreezeSet.Clear();
-                    foreach (var opt in freezeSet)
-                    {
-                        enableOpt(opt);
-                    }
-                }
-                Thread.Sleep(100); //arbitrary. will except here when closing program, but nothing needs to be done.
-            }
-        }
-
         public double getSetTargetInfo(TargetInfo info, int? setVal = null)
         {//most are actually ints but it's easier just to use a common type. double can store fairly large ints exactly.
             double ret = double.NaN;
@@ -1568,7 +1577,7 @@ namespace EldenRingTool
             return (mx, my, mz, mRad, mapID);
         }
 
-        public int teleportToGlobal((float, float, float, float, uint) targetCoords, float yOffset = 0, bool justConvPos = false, bool warpIfNeeded = false)
+        public async Task<int> teleportToGlobal((float, float, float, float, uint) targetCoords, float yOffset = 0, bool justConvPos = false, bool warpIfNeeded = false)
         {//this is imperfect, but at least it works within the main world pretty well.
             if (!isGameLoaded()) { Console.WriteLine("Game not loaded, not teleporting"); return -1; }
             var currentMapCoords = getMapCoords();
@@ -1588,17 +1597,17 @@ namespace EldenRingTool
             {//TODO: more extensive conditions for 'warp needed', may help in areas like siofra.
                 Utils.debugWrite("World ID differs, will warp first");
                 doWarp(targetCoords.Item5);
-                Thread.Sleep(1000);
+                await Task.Delay(1000, _cancellationTokenSource.Token);
                 for (int i = 0; i < 30; i++)
                 {
-                    Thread.Sleep(500);
+                    await Task.Delay(500, _cancellationTokenSource.Token);
                     if (!isGameLoaded()) { Console.Write("."); continue; }
                     currentMapCoords = getMapCoords();
                     worldIDCur = (currentMapCoords.Item5 & 0xFF000000) >> 24;
                     if (worldIDCur == worldIDTarget)
                     {//you don't always end up in the exact same map segment. matching world id is close enough.
                         Utils.debugWrite("Warp done, teleporting to actual location");
-                        teleportToGlobal(targetCoords, yOffset, warpIfNeeded: false);
+                        await teleportToGlobal(targetCoords, yOffset, warpIfNeeded: false);
                         return 1; //warped
                     }
                     Console.Write(",");
@@ -1608,10 +1617,10 @@ namespace EldenRingTool
                 {
                     Utils.debugWrite("Bad map after warp, warping to roundtable");
                     doWarp(185204736);
-                    Thread.Sleep(1000);
+                    await Task.Delay(1000, _cancellationTokenSource.Token);
                     for (int i = 0; i < 30; i++)
                     {
-                        Thread.Sleep(500);
+                        await Task.Delay(500, _cancellationTokenSource.Token);
                         if (!isGameLoaded()) { Console.Write("."); continue; }
                         break;
                     }

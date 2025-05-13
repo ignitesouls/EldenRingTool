@@ -1,5 +1,4 @@
-﻿using MiscUtils;
-using System.Linq;
+﻿using System.Linq;
 using System.Windows;
 
 namespace EldenRingTool
